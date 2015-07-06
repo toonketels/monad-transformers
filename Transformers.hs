@@ -103,3 +103,30 @@ eval2b env (App e1 e2)  = do val1 <- eval2b env e1
                              case val1 of
                                FunVal env' n body -> eval2b (Map.insert n val2 env') body
                                _                  -> throwError "type error in application"
+
+-- Pas the environment as part of the monad instead of as a param to eval func
+type Eval3 a = ReaderT Env (ErrorT String Identity) a
+
+runEval3 :: Env -> Eval3 a -> Either String a
+runEval3 env ev = runIdentity (runErrorT (runReaderT ev env))
+
+eval3             :: Exp -> Eval3 Value
+eval3 (Lit i)      = return $ IntVal i
+eval3 (Var n)      = do env <- ask
+                        case Map.lookup n env of
+                           Just val  -> return val
+                           Nothing   -> throwError ("unbound variable: " ++ n)
+eval3 (Plus e1 e2) = do e1' <- eval3 e1
+                        e2' <- eval3 e2
+                        case (e1', e2') of
+                            (IntVal i1, IntVal i2) -> return $ IntVal (i1 + i2)
+                            _                      -> throwError "type error in addition"
+eval3 (Abs n e)    = do env <- ask
+                        return $ FunVal env n e
+eval3 (App e1 e2)  = do val1 <- eval3 e1
+                        val2 <- eval3 e2
+                        case val1 of
+                           FunVal env' n body -> local (const (Map.insert n val2 env')) (eval3 body)
+                           _                  -> throwError "type error in application"
+
+-- runEval3 Map.empty (eval3 exampleExp)
